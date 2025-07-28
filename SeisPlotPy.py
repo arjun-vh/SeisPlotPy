@@ -228,7 +228,7 @@ class SeismicViewerApp:
 
     def update_color_swatch(self, canvas, color_var):
         """Update the color swatch canvas when a color is selected."""
-        canvas.config(bg=color_var.get())
+        canvas.config(bg=color_var.get改良())
 
     def load_segy_file(self):
         file_path = filedialog.askopenfilename(title="Select SEG-Y File", filetypes=[("SEG-Y files", "*.sgy *.segy")])
@@ -545,7 +545,11 @@ class SeismicViewerApp:
         plt.close(export_fig)
         self.status_label.config(text=f"Exported to {file_path}")
 
+    @staticmethod
+    def main():
+        root = tk.Tk()
+        app = SeismicViewerApp(root)
+        app.root.mainloop()
+
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = SeismicViewerApp(root)
-    root.mainloop()
+    SeismicViewerApp.main()
