@@ -64,6 +64,16 @@ class SeismicViewerApp:
         self.cdp_header_dropdown.grid(row=0, column=8)
         self.cdp_header_dropdown.bind("<<ComboboxSelected>>", self.update_cdp_range)
 
+        # Colormap selection
+        self.cmap_var = tk.StringVar(value="seismic")  # Default cmap
+        ttk.Label(self.control_frame, text="Colormap:").grid(row=0, column=9, padx=5, pady=5)
+        self.cmap_dropdown = ttk.Combobox(self.control_frame, textvariable=self.cmap_var, state='readonly', width=15, 
+                                         values=["gray", "gray_r", "Grays", "Grays_r", "seismic", "seismic_r", 
+                                                 "bwr", "bwr_r", "binary", "binary_r", "RdBu", "RdBu_r", 
+                                                 "RdGy", "RdGy_r", "coolwarm", "coolwarm_r", "PuOr", "PuOr_r", 
+                                                 "PiYG", "PiYG_r", "PRGn", "PRGn_r", "BrBG", "BrBG_r"])
+        self.cmap_dropdown.grid(row=0, column=10, padx=5, pady=5)
+
         # --- Second Row for Additional Controls ---
         # Time/Depth Domain Dropdown
         ttk.Label(self.control_frame, text="Domain:").grid(row=1, column=0, padx=5, pady=5)
@@ -108,24 +118,24 @@ class SeismicViewerApp:
 
         # Apply Button
         self.apply_button = ttk.Button(self.control_frame, text="Apply", command=self.plot_seismic)
-        self.apply_button.grid(row=2, column=4, padx=5)
+        self.apply_button.grid(row=2, column=10, padx=5)
 
         # --- Fourth Row for Export Controls ---
         # Export Format Dropdown
-        ttk.Label(self.control_frame, text="Export Format:").grid(row=3, column=5, padx=5)
+        ttk.Label(self.control_frame, text="Export Format:").grid(row=3, column=0, padx=5)
         self.format_var = tk.StringVar(value="PNG")
         self.format_dropdown = ttk.Combobox(self.control_frame, textvariable=self.format_var, state='readonly', width=10, values=["PNG", "JPEG", "TIFF", "PDF"])
-        self.format_dropdown.grid(row=3, column=6)
+        self.format_dropdown.grid(row=3, column=1)
 
         # DPI Entry
-        ttk.Label(self.control_frame, text="DPI:").grid(row=3, column=7, padx=5)
+        ttk.Label(self.control_frame, text="DPI:").grid(row=3, column=2, padx=5)
         self.dpi_var = tk.StringVar(value="300")
         self.dpi_entry = ttk.Entry(self.control_frame, width=10, textvariable=self.dpi_var)
-        self.dpi_entry.grid(row=3, column=8)
+        self.dpi_entry.grid(row=3, column=3)
 
         # Export Button
         self.export_button = ttk.Button(self.control_frame, text="Export", command=self.export_figure, state='disabled')
-        self.export_button.grid(row=3, column=9, padx=5)
+        self.export_button.grid(row=3, column=4, padx=5)
 
         # --- Horizon Controls Frame ---
         self.horizon_frame = ttk.Frame(self.root, padding=10)
@@ -228,7 +238,7 @@ class SeismicViewerApp:
 
     def update_color_swatch(self, canvas, color_var):
         """Update the color swatch canvas when a color is selected."""
-        canvas.config(bg=color_var.get改良())
+        canvas.config(bg=color_var.get())
 
     def load_segy_file(self):
         file_path = filedialog.askopenfilename(title="Select SEG-Y File", filetypes=[("SEG-Y files", "*.sgy *.segy")])
@@ -380,7 +390,7 @@ class SeismicViewerApp:
         # Plot seismic data with interpolation
         im = self.ax.imshow(
             data_filtered.T,
-            cmap="seismic",
+            cmap=self.cmap_var.get(),  # Use selected cmap
             aspect="auto",
             extent=[cdp_filtered[0], cdp_filtered[-1], twt_filtered[-1], twt_filtered[0]],
             vmin=vmin,

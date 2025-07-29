@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="SeisPlotPy",
-    version="0.1.1",  # Increment version
+    version="0.1.2",  # Increment version
     py_modules=["seisplotpy"],
     install_requires=[
         "segyio>=1.9.0",
