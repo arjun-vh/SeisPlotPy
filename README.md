@@ -7,7 +7,7 @@ You can install SeisPlotPy using pip:
 
 ```bash
 pip install SeisPlotPy
-```bash
+```
 
 Alternatively, clone the repository and install it locally:
 
@@ -15,14 +15,14 @@ Alternatively, clone the repository and install it locally:
 git clone https://github.com/arjun-vh/SeisPlotPy.git
 cd SeisPlotPy
 pip install -e .
-```bash
+```
 
 ##Usage
 To launch the GUI, run:
 
 ```bash
 seisplotpy
-```bash
+```
 
 ##Citation
 
