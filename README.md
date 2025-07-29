@@ -17,17 +17,17 @@ cd SeisPlotPy
 pip install -e .
 ```
 
-##Usage
+## Usage
 To launch the GUI, run:
 
 ```bash
 seisplotpy
 ```
 
-##Citation
+## Citation
 
 If you use SeisPlotPy in your research or work, please acknowledge
 
-##License
+## License
 This project is licensed under the MIT License - see the LICENSE file for details.
 
