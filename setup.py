@@ -9,13 +9,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="SeisPlotPy",
-    version="0.1.0",
-    py_modules=["seisplotpy"],  # Changed from packages=find_packages()
+    version="0.1.1",  # Increment version
+    py_modules=["seisplotpy"],
     install_requires=[
         "segyio>=1.9.0",
         "numpy>=1.21.0",
         "matplotlib>=3.5.0",
-        "pandas>=1.3.0"
+        "pandas>=1.3.0",
     ],
     entry_points={
         "console_scripts": [
