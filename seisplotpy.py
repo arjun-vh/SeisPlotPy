@@ -507,7 +507,7 @@ class SeismicViewerApp:
 
         im = export_ax.imshow(
             data_filtered.T,
-            cmap="seismic",
+            cmap=self.cmap_var.get(),  # Use selected cmap
             aspect="auto",
             extent=[cdp_filtered[0], cdp_filtered[-1], twt_filtered[-1], twt_filtered[0]],
             vmin=vmin,
