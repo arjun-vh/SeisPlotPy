@@ -9,16 +9,32 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import segyio
 import numpy as np
-import os
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
+import threading
+import time
+import sys
+import os
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class SeismicViewerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("SeisPlotPy")
         self.root.geometry("1200x800")
+        try:
+            self.root.iconbitmap(resource_path('seisplotpy.ico'))
+        except:
+            pass  # If icon not found, use default
 
         self.segy_data = None
         self.cdp_all = None
@@ -30,6 +46,12 @@ class SeismicViewerApp:
         self.fig = None
         self.ax = None
         self.canvas = None
+        
+        # Loading status variables
+        self.loading_active = False
+        self.loading_thread = None
+        self.status_timer = None
+        self.dot_count = 0
 
         # --- Top Control Panel ---
         self.control_frame = ttk.Frame(self.root, padding=10)
@@ -117,7 +139,7 @@ class SeismicViewerApp:
         self.fig_height_entry.grid(row=2, column=3)
 
         # Apply Button
-        self.apply_button = ttk.Button(self.control_frame, text="Apply", command=self.plot_seismic)
+        self.apply_button = ttk.Button(self.control_frame, text="Apply", command=self.apply_changes)
         self.apply_button.grid(row=2, column=10, padx=5)
 
         # --- Fourth Row for Export Controls ---
@@ -146,8 +168,8 @@ class SeismicViewerApp:
         self.num_horizons_var = tk.StringVar(value="0")
         self.num_horizons_entry = ttk.Entry(self.horizon_frame, width=5, textvariable=self.num_horizons_var)
         self.num_horizons_entry.grid(row=0, column=1)
-        self.num_horizons_entry.bind("<Return>", self.update_horizon_controls)
-        self.num_horizons_entry.bind("<FocusOut>", self.update_horizon_controls)
+        self.num_horizons_entry.bind("<Return>", self.update_horizon_controls_wrapper)
+        self.num_horizons_entry.bind("<FocusOut>", self.update_horizon_controls_wrapper)
 
         # Frame for dynamic horizon controls
         self.horizon_controls_frame = ttk.Frame(self.horizon_frame)
@@ -178,6 +200,262 @@ class SeismicViewerApp:
         self.color_options = ['red', 'blue', 'green', 'black', 'purple', 'orange', 'brown', 'cyan', 'magenta']
         self.line_style_options = ['solid', 'dashed', 'dotted', 'dashdot']
 
+    def start_loading_animation(self, base_message, show_patience_after=30):
+        """Start the loading animation with blinking dots."""
+        self.loading_active = True
+        self.dot_count = 0
+        self.loading_start_time = time.time()
+        self.base_message = base_message
+        self.show_patience_after = show_patience_after
+        self.update_loading_message()
+
+    def stop_loading_animation(self):
+        """Stop the loading animation."""
+        self.loading_active = False
+        if self.status_timer:
+            self.root.after_cancel(self.status_timer)
+            self.status_timer = None
+
+    def update_loading_message(self):
+        """Update the loading message with animated dots."""
+        if not self.loading_active:
+            return
+
+        # Check if we need to show patience message
+        elapsed_time = time.time() - self.loading_start_time
+        if elapsed_time >= self.show_patience_after:
+            current_message = "This may take some time, please be patient"
+        else:
+            current_message = self.base_message
+
+        # Add dots
+        dots = "." * (self.dot_count + 1)
+        self.status_label.config(text=f"{current_message}{dots}")
+        
+        # Update dot count (cycle through 0, 1, 2, 3)
+        self.dot_count = (self.dot_count + 1) % 4
+        
+        # Schedule next update (change 500 to your desired milliseconds)
+        if self.loading_active:
+            self.status_timer = self.root.after(500, self.update_loading_message)
+
+    def load_segy_file(self):
+        """Load SEG-Y file with loading animation."""
+        # Start loading animation immediately
+        self.start_loading_animation("Loading data, please wait", show_patience_after=30)
+        
+        # Disable the button during loading
+        self.select_button.config(state='disabled')
+        
+        file_path = filedialog.askopenfilename(title="Select SEG-Y File", filetypes=[("SEG-Y files", "*.sgy *.segy")])
+        if not file_path:
+            # Stop animation and re-enable button if user cancels
+            self.stop_loading_animation()
+            self.select_button.config(state='normal')
+            self.status_label.config(text="File selection cancelled.")
+            return
+        
+        self.file_path = file_path
+        
+        # Start loading in a separate thread
+        self.loading_thread = threading.Thread(target=self._load_segy_worker, args=(file_path,))
+        self.loading_thread.daemon = True
+        self.loading_thread.start()
+
+    def _load_segy_worker(self, file_path):
+        """Worker thread for loading SEG-Y file."""
+        try:
+            with segyio.open(file_path, ignore_geometry=True) as f:
+                self.twt_all = f.samples
+                self.segy_data = f.trace.raw[:]
+                self.header_data = {}
+                self.trace_count = f.tracecount
+
+                for key, val in segyio.tracefield.keys.items():
+                    try:
+                        self.header_data[key] = f.attributes(val)[:]
+                    except Exception:
+                        continue
+
+            # Update UI in main thread
+            self.root.after(0, self._load_segy_complete, file_path)
+            
+        except Exception as e:
+            # Handle error in main thread
+            self.root.after(0, self._load_segy_error, str(e))
+
+    def _load_segy_complete(self, file_path):
+        """Complete the SEG-Y loading process in the main thread."""
+        try:
+            # Stop loading animation
+            self.stop_loading_animation()
+            
+            self.populate_trace_headers()
+            self.status_label.config(text=f"Loaded SEG-Y file: {os.path.basename(file_path)} — Select CDP header")
+
+            # Set TWT range (fixed)
+            self.twt_min_var.set(str(np.min(self.twt_all)))
+            self.twt_max_var.set(str(np.max(self.twt_all)))
+
+            # Enable range entries for editing
+            self.cdp_min_entry.config(state='normal')
+            self.cdp_max_entry.config(state='normal')
+            self.twt_min_entry.config(state='normal')
+            self.twt_max_entry.config(state='normal')
+
+            # Initialize figure and canvas with aspect ratio
+            try:
+                fig_width = float(self.fig_width_var.get())
+                fig_height = float(self.fig_height_var.get())
+                if fig_width <= 0 or fig_height <= 0:
+                    raise ValueError("Figure size must be positive.")
+                aspect_ratio = fig_width / fig_height
+            except ValueError:
+                messagebox.showerror("Input Error", "Please enter valid positive numbers for figure aspect ratio.")
+                return
+
+            self.fig = plt.Figure(figsize=(10, 10 / aspect_ratio))
+            self.ax = self.fig.add_subplot(111)
+            if self.canvas:
+                self.canvas.get_tk_widget().destroy()
+            self.canvas = FigureCanvasTkAgg(self.fig, master=self.scrollable_frame)
+            self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            # Bind resize event to maintain aspect ratio
+            self.root.bind('<Configure>', self.on_resize)
+
+            # Enable export button
+            self.export_button.config(state='normal')
+
+            # Plot the seismic data
+            self.plot_seismic()
+
+        except Exception as e:
+            self._load_segy_error(str(e))
+        finally:
+            # Re-enable the button
+            self.select_button.config(state='normal')
+
+    def _load_segy_error(self, error_message):
+        """Handle SEG-Y loading error in the main thread."""
+        # Stop loading animation
+        self.stop_loading_animation()
+        
+        # Re-enable the button
+        self.select_button.config(state='normal')
+        
+        # Show error
+        messagebox.showerror("Error", f"Failed to load SEG-Y: {error_message}")
+        self.status_label.config(text="Error loading SEG-Y file.")
+
+    def apply_changes(self):
+        """Apply changes with loading animation."""
+        if self.segy_data is None:
+            messagebox.showwarning("Warning", "Please load a SEG-Y file first.")
+            return
+        
+        # Start loading animation
+        self.start_loading_animation("Applying changes", show_patience_after=999999)  # No patience message for apply
+        
+        # Disable the button during processing
+        self.apply_button.config(state='disabled')
+        
+        # Start processing in a separate thread
+        self.loading_thread = threading.Thread(target=self._apply_changes_worker)
+        self.loading_thread.daemon = True
+        self.loading_thread.start()
+
+    def _apply_changes_worker(self):
+        """Worker thread for applying changes."""
+        try:
+            # Simulate the plotting work (this runs in background)
+            time.sleep(0.1)  # Small delay to show the animation
+            
+            # Update UI in main thread
+            self.root.after(0, self._apply_changes_complete)
+            
+        except Exception as e:
+            # Handle error in main thread
+            self.root.after(0, self._apply_changes_error, str(e))
+
+    def _apply_changes_complete(self):
+        """Complete the apply changes process in the main thread."""
+        try:
+            # Stop loading animation
+            self.stop_loading_animation()
+            
+            # Actually plot the seismic data
+            self.plot_seismic()
+            
+            # Update status
+            filename = os.path.basename(self.file_path) if self.file_path else "data"
+            self.status_label.config(text=f"Applied changes to: {filename}")
+            
+        except Exception as e:
+            self._apply_changes_error(str(e))
+        finally:
+            # Re-enable the button
+            self.apply_button.config(state='normal')
+
+    def _apply_changes_error(self, error_message):
+        """Handle apply changes error in the main thread."""
+        # Stop loading animation
+        self.stop_loading_animation()
+        
+        # Re-enable the button
+        self.apply_button.config(state='normal')
+        
+        # Show error
+        messagebox.showerror("Error", f"Failed to apply changes: {error_message}")
+        self.status_label.config(text="Error applying changes.")
+
+    def update_horizon_controls_wrapper(self, event=None):
+        """Wrapper for horizon controls update with loading animation."""
+        # Start loading animation
+        self.start_loading_animation("Applying changes", show_patience_after=999999)  # No patience message
+        
+        # Start processing in a separate thread
+        self.loading_thread = threading.Thread(target=self._update_horizon_controls_worker)
+        self.loading_thread.daemon = True
+        self.loading_thread.start()
+
+    def _update_horizon_controls_worker(self):
+        """Worker thread for updating horizon controls."""
+        try:
+            # Longer delay to show "Applying changes..." message
+            time.sleep(0.5)
+            
+            # Update UI in main thread
+            self.root.after(0, self._update_horizon_controls_complete)
+            
+        except Exception as e:
+            # Handle error in main thread
+            self.root.after(0, self._update_horizon_controls_error, str(e))
+
+    def _update_horizon_controls_complete(self):
+        """Complete the horizon controls update in the main thread."""
+        try:
+            # Actually update the horizon controls first
+            self.update_horizon_controls()
+            
+            # Stop loading animation
+            self.stop_loading_animation()
+            
+            # Show completion message after a brief delay to see the controls appear
+            self.root.after(500, lambda: self.status_label.config(text="Horizon controls updated."))
+            
+        except Exception as e:
+            self._update_horizon_controls_error(str(e))
+
+    def _update_horizon_controls_error(self, error_message):
+        """Handle horizon controls update error in the main thread."""
+        # Stop loading animation
+        self.stop_loading_animation()
+        
+        # Show error
+        messagebox.showerror("Error", f"Failed to update horizon controls: {error_message}")
+        self.status_label.config(text="Error updating horizon controls.")
+
     def update_horizon_controls(self, event=None):
         """Update the horizon control widgets based on the number of horizons."""
         try:
@@ -189,8 +467,12 @@ class SeismicViewerApp:
             return
 
         # Clear existing horizon widgets and data
-        for widget in self.horizon_widgets:
-            widget.destroy()
+        for widget_tuple in self.horizon_widgets:
+            for widget in widget_tuple:
+                try:
+                    widget.destroy()
+                except:
+                    pass  # Ignore errors if widget is already destroyed
         self.horizon_widgets = []
         self.horizon_data = []
 
@@ -239,70 +521,6 @@ class SeismicViewerApp:
     def update_color_swatch(self, canvas, color_var):
         """Update the color swatch canvas when a color is selected."""
         canvas.config(bg=color_var.get())
-
-    def load_segy_file(self):
-        file_path = filedialog.askopenfilename(title="Select SEG-Y File", filetypes=[("SEG-Y files", "*.sgy *.segy")])
-        if not file_path:
-            return
-        self.file_path = file_path
-        self.status_label.config(text=f"Loading: {os.path.basename(file_path)}")
-
-        try:
-            with segyio.open(file_path, ignore_geometry=True) as f:
-                self.twt_all = f.samples
-                self.segy_data = f.trace.raw[:]
-                self.header_data = {}
-                self.trace_count = f.tracecount
-
-                for key, val in segyio.tracefield.keys.items():
-                    try:
-                        self.header_data[key] = f.attributes(val)[:]
-                    except Exception:
-                        continue
-
-            self.populate_trace_headers()
-            self.status_label.config(text=f"Loaded SEG-Y file: {os.path.basename(file_path)} — Select CDP header")
-
-            # Set TWT range (fixed)
-            self.twt_min_var.set(str(np.min(self.twt_all)))
-            self.twt_max_var.set(str(np.max(self.twt_all)))
-
-            # Enable range entries for editing
-            self.cdp_min_entry.config(state='normal')
-            self.cdp_max_entry.config(state='normal')
-            self.twt_min_entry.config(state='normal')
-            self.twt_max_entry.config(state='normal')
-
-            # Initialize figure and canvas with aspect ratio
-            try:
-                fig_width = float(self.fig_width_var.get())
-                fig_height = float(self.fig_height_var.get())
-                if fig_width <= 0 or fig_height <= 0:
-                    raise ValueError("Figure size must be positive.")
-                aspect_ratio = fig_width / fig_height
-            except ValueError:
-                messagebox.showerror("Input Error", "Please enter valid positive numbers for figure aspect ratio.")
-                return
-
-            self.fig = plt.Figure(figsize=(10, 10 / aspect_ratio))
-            self.ax = self.fig.add_subplot(111)
-            if self.canvas:
-                self.canvas.get_tk_widget().destroy()
-            self.canvas = FigureCanvasTkAgg(self.fig, master=self.scrollable_frame)
-            self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-            # Bind resize event to maintain aspect ratio
-            self.root.bind('<Configure>', self.on_resize)
-
-            # Enable export button
-            self.export_button.config(state='normal')
-
-            # Plot the seismic data
-            self.plot_seismic()
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load SEG-Y: {str(e)}")
-            self.status_label.config(text="Error loading SEG-Y file.")
 
     def populate_trace_headers(self):
         header_list = list(self.header_data.keys())
