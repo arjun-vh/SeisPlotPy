@@ -17,7 +17,7 @@ cd SeisPlotPy
 pip install -e .
 ```
 ### For Windows users
-Additionally you can go to the [latest release](https://github.com/arjun-vh/SeisPlotPy/releases/latest) and download the executable (.exe file) if you prefer that.
+You can go to the [latest release](https://github.com/arjun-vh/SeisPlotPy/releases/latest) and download the executable (.exe file) if you prefer that.
 
 ## Usage
 To launch the GUI, run:
