@@ -2,14 +2,14 @@
 """
 Created on Mon Jul 28 17:03:42 2025
 
-@author: Admin
+@author: Arjun
 """
 
 from setuptools import setup, find_packages
 
 setup(
     name="SeisPlotPy",
-    version="0.1.4",  # Increment version
+    version="0.2.0",  # Updated version
     py_modules=["seisplotpy"],
     install_requires=[
         "segyio>=1.9.0",
@@ -19,11 +19,11 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "seisplotpy=seisplotpy:SeismicViewerApp.main"  # Updated module name
+            "seisplotpy=seisplotpy:SeismicViewerApp.main"
         ]
     },
-    author="Arjun VH",
-    author_email="your.email@example.com",  # Replace with your email
+    author="Arjun V H",
+    author_email="arjunvelliyidathu@gmail.com",  # Updated email
     description="A GUI tool to view and export SEG-Y seismic data.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -34,4 +34,7 @@ setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.7",
+    package_data={
+        "": ["seisplotpy.ico"]  # Include icon file
+    },
 )

@@ -2,7 +2,7 @@
 """
 Created on Mon Jul 28 12:09:24 2025
 
-@author: Admin
+@author: Arjun
 """
 
 import tkinter as tk
@@ -27,6 +27,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 class SeismicViewerApp:
+
     def __init__(self, root):
         self.root = root
         self.root.title("SeisPlotPy")
@@ -35,7 +36,35 @@ class SeismicViewerApp:
             self.root.iconbitmap(resource_path('seisplotpy.ico'))
         except:
             pass  # If icon not found, use default
-
+    
+        # Variable to track Text Header menu state
+        self.text_header_menu_enabled = tk.BooleanVar(value=False)
+    
+        # NEW: Variable to track About window
+        self.about_window = None  # Track the About window
+    
+        # Add menubar
+        self.menubar = tk.Menu(self.root)
+        self.root.config(menu=self.menubar)
+    
+        # File menu
+        self.file_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="File", menu=self.file_menu)
+        self.file_menu.add_command(label="Open SEG-Y File", command=self.load_segy_file)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Exit", command=self.root.destroy)
+    
+        # View menu
+        self.view_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="View", menu=self.view_menu)
+        self.view_menu.add_command(label="Text Header", command=self.show_text_header_window, state='disabled')
+    
+        # About menu
+        self.about_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="About", menu=self.about_menu)
+        # NEW: Add About SeisPlotPy option
+        self.about_menu.add_command(label="About SeisPlotPy", command=self.show_about_window)
+    
         self.segy_data = None
         self.cdp_all = None
         self.twt_all = None
@@ -46,21 +75,23 @@ class SeismicViewerApp:
         self.fig = None
         self.ax = None
         self.canvas = None
+        self.text_header = None  # Store the SEG-Y text header
+        self.text_header_window = None  # Track the text header window
         
         # Loading status variables
         self.loading_active = False
         self.loading_thread = None
         self.status_timer = None
         self.dot_count = 0
-
+    
         # --- Top Control Panel ---
         self.control_frame = ttk.Frame(self.root, padding=10)
         self.control_frame.pack(fill=tk.X)
-
+    
         # Select SEG-Y button
         self.select_button = ttk.Button(self.control_frame, text="Select SEG-Y File", command=self.load_segy_file)
         self.select_button.grid(row=0, column=0, padx=5)
-
+    
         # CDP min/max display
         ttk.Label(self.control_frame, text="X Range:").grid(row=0, column=1, padx=5)
         self.cdp_min_var = tk.StringVar()
@@ -69,7 +100,7 @@ class SeismicViewerApp:
         self.cdp_max_entry = ttk.Entry(self.control_frame, width=10, textvariable=self.cdp_max_var, state='disabled')
         self.cdp_min_entry.grid(row=0, column=2)
         self.cdp_max_entry.grid(row=0, column=3)
-
+    
         # TWT/Depth min/max display
         ttk.Label(self.control_frame, text="TWT/Depth Range:").grid(row=0, column=4, padx=5)
         self.twt_min_var = tk.StringVar()
@@ -78,14 +109,14 @@ class SeismicViewerApp:
         self.twt_max_entry = ttk.Entry(self.control_frame, width=10, textvariable=self.twt_max_var, state='disabled')
         self.twt_min_entry.grid(row=0, column=5)
         self.twt_max_entry.grid(row=0, column=6)
-
+    
         # CDP Header Dropdown
         ttk.Label(self.control_frame, text="Select X-axis Header:").grid(row=0, column=7, padx=5)
         self.cdp_header_var = tk.StringVar()
         self.cdp_header_dropdown = ttk.Combobox(self.control_frame, textvariable=self.cdp_header_var, state='readonly', width=20)
         self.cdp_header_dropdown.grid(row=0, column=8)
         self.cdp_header_dropdown.bind("<<ComboboxSelected>>", self.update_cdp_range)
-
+    
         # Colormap selection
         self.cmap_var = tk.StringVar(value="seismic")  # Default cmap
         ttk.Label(self.control_frame, text="Colormap:").grid(row=0, column=9, padx=5, pady=5)
@@ -95,14 +126,14 @@ class SeismicViewerApp:
                                                  "RdGy", "RdGy_r", "coolwarm", "coolwarm_r", "PuOr", "PuOr_r", 
                                                  "PiYG", "PiYG_r", "PRGn", "PRGn_r", "BrBG", "BrBG_r"])
         self.cmap_dropdown.grid(row=0, column=10, padx=5, pady=5)
-
+    
         # --- Second Row for Additional Controls ---
         # Time/Depth Domain Dropdown
         ttk.Label(self.control_frame, text="Domain:").grid(row=1, column=0, padx=5, pady=5)
         self.domain_var = tk.StringVar(value="Time")
         self.domain_dropdown = ttk.Combobox(self.control_frame, textvariable=self.domain_var, state='readonly', width=10, values=["Time", "Depth"])
         self.domain_dropdown.grid(row=1, column=1)
-
+    
         # vmin/vmax Entry
         ttk.Label(self.control_frame, text="Amplitude (min, max):").grid(row=1, column=2, padx=5)
         self.vmin_var = tk.StringVar(value="-0.3")
@@ -111,23 +142,23 @@ class SeismicViewerApp:
         self.vmin_entry.grid(row=1, column=3)
         self.vmax_entry = ttk.Entry(self.control_frame, width=10, textvariable=self.vmax_var)
         self.vmax_entry.grid(row=1, column=4)
-
+    
         # X-axis Position Dropdown
         ttk.Label(self.control_frame, text="X Axis Position:").grid(row=1, column=5, padx=5)
         self.axis_pos_var = tk.StringVar(value="Top")
         self.axis_pos_dropdown = ttk.Combobox(self.control_frame, textvariable=self.axis_pos_var, state='readonly', width=10, values=["Top", "Bottom"])
         self.axis_pos_dropdown.grid(row=1, column=6)
-
+    
         # Grid Toggle Checkbox
         self.grid_var = tk.BooleanVar(value=True)
         self.grid_check = ttk.Checkbutton(self.control_frame, text="Show Grid", variable=self.grid_var)
         self.grid_check.grid(row=1, column=7, padx=5)
-
+    
         # X-axis Flip Checkbox
         self.flip_x_var = tk.BooleanVar(value=False)
         self.flip_x_check = ttk.Checkbutton(self.control_frame, text="Flip X-Axis", variable=self.flip_x_var)
         self.flip_x_check.grid(row=1, column=8, padx=5)
-
+    
         # --- Third Row for Figure Size Controls ---
         # Figure size (width, height) Entry for aspect ratio
         ttk.Label(self.control_frame, text="Figure Aspect Ratio (width, height):").grid(row=2, column=0, columnspan=2, padx=5, pady=5)
@@ -137,32 +168,32 @@ class SeismicViewerApp:
         self.fig_height_entry = ttk.Entry(self.control_frame, width=10, textvariable=self.fig_height_var)
         self.fig_width_entry.grid(row=2, column=2)
         self.fig_height_entry.grid(row=2, column=3)
-
+    
         # Apply Button
         self.apply_button = ttk.Button(self.control_frame, text="Apply", command=self.apply_changes)
         self.apply_button.grid(row=2, column=10, padx=5)
-
+    
         # --- Fourth Row for Export Controls ---
         # Export Format Dropdown
         ttk.Label(self.control_frame, text="Export Format:").grid(row=3, column=0, padx=5)
         self.format_var = tk.StringVar(value="PNG")
         self.format_dropdown = ttk.Combobox(self.control_frame, textvariable=self.format_var, state='readonly', width=10, values=["PNG", "JPEG", "TIFF", "PDF"])
         self.format_dropdown.grid(row=3, column=1)
-
+    
         # DPI Entry
         ttk.Label(self.control_frame, text="DPI:").grid(row=3, column=2, padx=5)
         self.dpi_var = tk.StringVar(value="300")
         self.dpi_entry = ttk.Entry(self.control_frame, width=10, textvariable=self.dpi_var)
         self.dpi_entry.grid(row=3, column=3)
-
+    
         # Export Button
         self.export_button = ttk.Button(self.control_frame, text="Export", command=self.export_figure, state='disabled')
         self.export_button.grid(row=3, column=4, padx=5)
-
+    
         # --- Horizon Controls Frame ---
         self.horizon_frame = ttk.Frame(self.root, padding=10)
         self.horizon_frame.pack(fill=tk.X)
-
+    
         # Number of Horizons Entry
         ttk.Label(self.horizon_frame, text="Number of Horizons:").grid(row=0, column=0, padx=5, pady=5)
         self.num_horizons_var = tk.StringVar(value="0")
@@ -170,36 +201,36 @@ class SeismicViewerApp:
         self.num_horizons_entry.grid(row=0, column=1)
         self.num_horizons_entry.bind("<Return>", self.update_horizon_controls_wrapper)
         self.num_horizons_entry.bind("<FocusOut>", self.update_horizon_controls_wrapper)
-
+    
         # Frame for dynamic horizon controls
         self.horizon_controls_frame = ttk.Frame(self.horizon_frame)
         self.horizon_controls_frame.grid(row=1, column=0, columnspan=10, sticky='w')
-
+    
         # --- Scrollable Matplotlib Canvas for Seismic Display ---
         self.canvas_frame = tk.Frame(self.root)
         self.canvas_frame.pack(fill=tk.BOTH, expand=True)
-
+    
         self.canvas_widget = tk.Canvas(self.canvas_frame, bg='white')
         self.scrollable_frame = ttk.Frame(self.canvas_widget)
         self.scrollbar_v = ttk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas_widget.yview)
         self.scrollbar_h = ttk.Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas_widget.xview)
         self.canvas_widget.configure(yscrollcommand=self.scrollbar_v.set, xscrollcommand=self.scrollbar_h.set)
-
+    
         self.scrollable_frame.bind("<Configure>", lambda e: self.canvas_widget.configure(scrollregion=self.canvas_widget.bbox("all")))
         self.canvas_widget.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-
+    
         self.scrollbar_v.pack(side=tk.RIGHT, fill=tk.Y)
         self.scrollbar_h.pack(side=tk.BOTTOM, fill=tk.X)
         self.canvas_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
+    
         # --- Status Bar ---
         self.status_label = ttk.Label(self.root, text="Welcome!", relief=tk.SUNKEN, anchor='w')
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
-
+    
         # Available colors and line styles for horizons
         self.color_options = ['red', 'blue', 'green', 'black', 'purple', 'orange', 'brown', 'cyan', 'magenta']
         self.line_style_options = ['solid', 'dashed', 'dotted', 'dashdot']
-
+                                   
     def start_loading_animation(self, base_message, show_patience_after=30):
         """Start the loading animation with blinking dots."""
         self.loading_active = True
@@ -244,8 +275,9 @@ class SeismicViewerApp:
         # Start loading animation immediately
         self.start_loading_animation("Loading data, please wait", show_patience_after=30)
         
-        # Disable the button during loading
+        # Disable the button and Text Header menu option during loading
         self.select_button.config(state='disabled')
+        self.view_menu.entryconfig("Text Header", state='disabled')
         
         file_path = filedialog.askopenfilename(title="Select SEG-Y File", filetypes=[("SEG-Y files", "*.sgy *.segy")])
         if not file_path:
@@ -262,12 +294,14 @@ class SeismicViewerApp:
         self.loading_thread.daemon = True
         self.loading_thread.start()
 
+    # MODIFIED: Added text header extraction
     def _load_segy_worker(self, file_path):
         """Worker thread for loading SEG-Y file."""
         try:
             with segyio.open(file_path, ignore_geometry=True) as f:
                 self.twt_all = f.samples
                 self.segy_data = f.trace.raw[:]
+                self.text_header = f.text[0]  # Extract the text header (first 3200 bytes)
                 self.header_data = {}
                 self.trace_count = f.tracecount
 
@@ -284,25 +318,33 @@ class SeismicViewerApp:
             # Handle error in main thread
             self.root.after(0, self._load_segy_error, str(e))
 
+    # MODIFIED: Added call to show text header window
     def _load_segy_complete(self, file_path):
         """Complete the SEG-Y loading process in the main thread."""
         try:
             # Stop loading animation
             self.stop_loading_animation()
             
+            # Show the text header window
+            self.show_text_header_window()
+            
+            # NEW: Enable Text Header menu option
+            self.view_menu.entryconfig("Text Header", state='normal')
+            self.text_header_menu_enabled.set(True)
+            
             self.populate_trace_headers()
             self.status_label.config(text=f"Loaded SEG-Y file: {os.path.basename(file_path)} — Select CDP header")
-
+    
             # Set TWT range (fixed)
             self.twt_min_var.set(str(np.min(self.twt_all)))
             self.twt_max_var.set(str(np.max(self.twt_all)))
-
+    
             # Enable range entries for editing
             self.cdp_min_entry.config(state='normal')
             self.cdp_max_entry.config(state='normal')
             self.twt_min_entry.config(state='normal')
             self.twt_max_entry.config(state='normal')
-
+    
             # Initialize figure and canvas with aspect ratio
             try:
                 fig_width = float(self.fig_width_var.get())
@@ -313,23 +355,23 @@ class SeismicViewerApp:
             except ValueError:
                 messagebox.showerror("Input Error", "Please enter valid positive numbers for figure aspect ratio.")
                 return
-
+    
             self.fig = plt.Figure(figsize=(10, 10 / aspect_ratio))
             self.ax = self.fig.add_subplot(111)
             if self.canvas:
                 self.canvas.get_tk_widget().destroy()
             self.canvas = FigureCanvasTkAgg(self.fig, master=self.scrollable_frame)
             self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
+    
             # Bind resize event to maintain aspect ratio
             self.root.bind('<Configure>', self.on_resize)
-
+    
             # Enable export button
             self.export_button.config(state='normal')
-
+    
             # Plot the seismic data
             self.plot_seismic()
-
+    
         except Exception as e:
             self._load_segy_error(str(e))
         finally:
@@ -772,6 +814,91 @@ class SeismicViewerApp:
         export_fig.savefig(file_path, dpi=dpi, bbox_inches='tight')
         plt.close(export_fig)
         self.status_label.config(text=f"Exported to {file_path}")
+
+    # NEW: Method to display text header window
+    def show_text_header_window(self):
+        """Display the SEG-Y text header in a non-modal window."""
+        if self.text_header_window:
+            try:
+                self.text_header_window.destroy()
+            except:
+                pass  # Ignore if window is already destroyed
+            self.text_header_window = None
+    
+        # Create a new Toplevel window
+        self.text_header_window = tk.Toplevel(self.root)
+        self.text_header_window.title("SEG-Y Text Header")
+        self.text_header_window.geometry("700x600")  # Optimized for ~40 lines of 80 characters
+        self.text_header_window.resizable(True, True)
+        try:
+            self.text_header_window.iconbitmap(resource_path('seisplotpy.ico'))
+        except:
+            pass  # If icon not found, use default
+    
+        # Frame to hold the text widget and scrollbars
+        text_frame = ttk.Frame(self.text_header_window)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    
+        # Text widget to display the header
+        text_widget = tk.Text(text_frame, wrap="none", font=("Courier", 10))
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    
+        # Vertical scrollbar
+        scroll_y = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+        scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        text_widget.configure(yscrollcommand=scroll_y.set)
+    
+        # Horizontal scrollbar
+        scroll_x = ttk.Scrollbar(self.text_header_window, orient="horizontal", command=text_widget.xview)
+        scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        text_widget.configure(xscrollcommand=scroll_x.set)
+    
+        # Format and display the text header
+        if self.text_header:
+            try:
+                # SEG-Y text header is typically 3200 bytes (40 lines of 80 characters)
+                formatted_header = ""
+                for i in range(0, len(self.text_header), 80):
+                    line = self.text_header[i:i+80].decode('ascii', errors='replace')
+                    formatted_header += line.rstrip() + "\n"
+                text_widget.insert(tk.END, formatted_header)
+            except Exception as e:
+                text_widget.insert(tk.END, f"Error decoding text header: {str(e)}")
+        else:
+            text_widget.insert(tk.END, "No text header available or invalid header.")
+    
+        text_widget.config(state='disabled')  # Make text read-only
+    
+
+    
+        # Ensure the window is non-modal (default behavior of Toplevel)
+    
+    def show_about_window(self):
+        """Display the About window with author and contact information."""
+        if self.about_window:
+            try:
+                self.about_window.destroy()
+            except:
+                pass  # Ignore if window is already destroyed
+            self.about_window = None
+    
+        # Create a new Toplevel window
+        self.about_window = tk.Toplevel(self.root)
+        self.about_window.title("About SeisPlotPy")
+        self.about_window.geometry("300x100")  # Reasonable size for short text
+        self.about_window.resizable(True, True)
+        try:
+            self.about_window.iconbitmap(resource_path('seisplotpy.ico'))
+        except:
+            pass  # If icon not found, use default
+    
+        # Text label
+        about_text = "Author: Arjun V H\ncontact: arjunvelliyidathu@gmail.com"
+        text_label = ttk.Label(self.about_window, text=about_text, justify=tk.CENTER, font=("Arial", 10))
+        text_label.pack(pady=20, padx=10)
+    
+    
+        # Ensure the window is non-modal (default behavior of Toplevel)
 
     @staticmethod
     def main():
